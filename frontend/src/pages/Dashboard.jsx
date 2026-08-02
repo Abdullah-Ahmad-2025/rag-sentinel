@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -9,6 +9,20 @@ export default function Dashboard() {
   const [answer, setAnswer] = useState('');
   const [results, setResults] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [metrics, setMetrics] = useState(null);
+
+  const fetchMonitoring = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/api/evaluate/monitoring`);
+      setMetrics(res.data);
+    } catch (err) {
+      console.error("Failed to fetch monitoring", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchMonitoring();
+  }, []);
 
   const handleEvaluate = async () => {
     setLoading(true);
@@ -19,6 +33,7 @@ export default function Dashboard() {
         answer,
       });
       setResults(res.data);
+      fetchMonitoring(); // refresh monitoring after new evaluation
     } catch (err) {
       console.error(err);
     }
@@ -101,6 +116,46 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Monitoring Section */}
+      <div style={{ marginTop: '30px', borderTop: '2px solid #ccc', paddingTop: '20px' }}>
+        <h3>📊 Production Monitoring (Last 24 Hours)</h3>
+        {metrics && !metrics.error ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+            <div style={{ border: '1px solid #ccc', padding: '10px', borderRadius: '8px' }}>
+              <p style={{ margin: '0', fontSize: '12px', color: '#666' }}>Average Score</p>
+              <p style={{ margin: '5px 0', fontSize: '24px', fontWeight: 'bold' }}>
+                {(metrics.avg_score * 100).toFixed(0)}%
+              </p>
+            </div>
+            <div style={{ border: '1px solid #ccc', padding: '10px', borderRadius: '8px' }}>
+              <p style={{ margin: '0', fontSize: '12px', color: '#666' }}>Trend</p>
+              <p style={{
+                margin: '5px 0',
+                fontSize: '24px',
+                fontWeight: 'bold',
+                color: metrics.trend === 'degrading' ? 'red' :
+                       metrics.trend === 'improving' ? 'green' : 'orange'
+              }}>
+                {metrics.trend}
+              </p>
+            </div>
+            <div style={{ border: '1px solid #ccc', padding: '10px', borderRadius: '8px' }}>
+              <p style={{ margin: '0', fontSize: '12px', color: '#666' }}>Alerts</p>
+              <p style={{
+                margin: '5px 0',
+                fontSize: '24px',
+                fontWeight: 'bold',
+                color: metrics.alert_count > 0 ? 'red' : 'green'
+              }}>
+                {metrics.alert_count > 0 ? `⚠️ ${metrics.alert_count}` : '✅ 0'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p>No monitoring data yet. Run some evaluations first.</p>
+        )}
       </div>
     </div>
   );
