@@ -1,7 +1,10 @@
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from langchain_groq import ChatGroq
 import os
 import re
+
+MAX_DOC_CHARS = 2000
+
 
 class ContextContradictionDetector:
     """
@@ -21,20 +24,27 @@ class ContextContradictionDetector:
             raise ValueError("GROQ_API_KEY not found in environment variables")
 
         self.llm = ChatGroq(
-            model="llama-3.3-70b-versatile",  # Use the latest recommended model
+            model="llama-3.3-70b-versatile",
             temperature=0,
-            api_key=api_key
+            api_key=api_key,
+            timeout=30,
         )
 
-    def evaluate(self, answer: str, retrieved_docs: List[str]) -> Dict:
-        """
-        Check for internal contradictions between answer and sources.
-        """
-        # Prepare documents (truncate to avoid token limits)
-        doc_text = "\n".join([f"SOURCE {i}: {doc[:500]}" for i, doc in enumerate(retrieved_docs)])
+    async def evaluate(self, answer: str, retrieved_docs: List[str]) -> Dict:
+        if not retrieved_docs:
+            return {
+                "contradiction_score": 1.0,
+                "has_contradiction": False,
+                "verdict": "NO",
+                "explanation": "No retrieved documents to compare against.",
+                "specific_contradictions": [],
+            }
 
-        prompt = f"""
-You are evaluating a RAG (Retrieval-Augmented Generation) system.
+        doc_text = "\n".join([
+            f"SOURCE {i}: {doc[:MAX_DOC_CHARS]}" for i, doc in enumerate(retrieved_docs)
+        ])
+
+        prompt = f"""You are evaluating a RAG (Retrieval-Augmented Generation) system.
 
 Answer to evaluate:
 {answer}
@@ -52,20 +62,18 @@ Does the answer contradict any of its sources?
 Respond in this exact format:
 VERDICT: [YES/PARTIAL/NO]
 DETAILS: [explanation of why]
-SPECIFIC_CONTRADICTIONS: [list any specific contradictions found]
-"""
+SPECIFIC_CONTRADICTIONS: [list any specific contradictions found, or "None"]"""
 
-        response = self.llm.invoke(prompt)
+        response = await self.llm.ainvoke(prompt)
         response_text = response.content
 
-        # Parse the response
         verdict, explanation, specifics = self._parse_response(response_text)
 
-        # Convert verdict to score
-        if "yes" in verdict.lower():
+        verdict_upper = verdict.upper().strip()
+        if verdict_upper == "YES":
             contradiction_score = 0.0
             has_contradiction = True
-        elif "partial" in verdict.lower():
+        elif verdict_upper == "PARTIAL":
             contradiction_score = 0.5
             has_contradiction = True
         else:
@@ -75,25 +83,36 @@ SPECIFIC_CONTRADICTIONS: [list any specific contradictions found]
         return {
             "contradiction_score": contradiction_score,
             "has_contradiction": has_contradiction,
-            "verdict": verdict,
+            "verdict": verdict_upper,
             "explanation": explanation,
-            "specific_contradictions": specifics
+            "specific_contradictions": specifics,
         }
 
-    def _parse_response(self, response_text: str) -> tuple:
-        """Parse the LLM response to extract verdict, explanation, and specifics."""
+    def _parse_response(self, response_text: str) -> Tuple[str, str, List[str]]:
         verdict = "NO"
         explanation = "No contradictions detected."
         specifics = []
 
         lines = response_text.strip().split('\n')
+        in_contradictions = False
+
         for line in lines:
-            if line.startswith("VERDICT:"):
-                verdict = line.replace("VERDICT:", "").strip()
-            elif line.startswith("DETAILS:"):
-                explanation = line.replace("DETAILS:", "").strip()
-            elif line.startswith("SPECIFIC_CONTRADICTIONS:"):
-                # The rest might contain list of contradictions
-                specifics = [l.strip() for l in lines[lines.index(line)+1:] if l.strip()]
+            stripped = line.strip()
+            if stripped.startswith("VERDICT:"):
+                verdict = stripped.replace("VERDICT:", "").strip()
+                in_contradictions = False
+            elif stripped.startswith("DETAILS:"):
+                explanation = stripped.replace("DETAILS:", "").strip()
+                in_contradictions = False
+            elif stripped.startswith("SPECIFIC_CONTRADICTIONS:"):
+                content = stripped.replace("SPECIFIC_CONTRADICTIONS:", "").strip()
+                if content and content.lower() not in ("none", "n/a", "-"):
+                    specifics.append(content)
+                in_contradictions = True
+            elif in_contradictions and stripped:
+                if stripped.startswith("- "):
+                    specifics.append(stripped[2:])
+                elif stripped.lower() not in ("none", "n/a"):
+                    specifics.append(stripped)
 
         return verdict, explanation, specifics

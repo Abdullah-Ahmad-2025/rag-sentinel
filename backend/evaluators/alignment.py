@@ -3,6 +3,9 @@ from langchain_groq import ChatGroq
 import os
 import re
 
+MAX_DOC_CHARS = 2000
+
+
 class RetrievalGenerationAlignmentEvaluator:
     """
     Measures how well the LLM uses retrieved documents.
@@ -22,20 +25,24 @@ class RetrievalGenerationAlignmentEvaluator:
         self.llm = ChatGroq(
             model="llama-3.3-70b-versatile",
             temperature=0,
-            api_key=api_key
+            api_key=api_key,
+            timeout=30,
         )
 
-    def evaluate(self, query: str, retrieved_docs: List[str], answer: str) -> Dict:
-        """
-        Score: How many retrieved documents are actually used in the answer?
+    async def evaluate(self, query: str, retrieved_docs: List[str], answer: str) -> Dict:
+        if not retrieved_docs:
+            return {
+                "alignment_score": 1.0,
+                "usage_map": {},
+                "used_count": 0,
+                "total_relevant": 0,
+                "explanation": "No retrieved documents provided.",
+                "parse_error": False,
+            }
 
-        Returns:
-            - alignment_score: 0-1 (1 = uses all docs, 0 = ignores all)
-            - usage_map: which docs were used/unused
-            - explanation: why the score was given
-        """
-        # Step 1: Create the prompt for the LLM
-        doc_text = "\n".join([f"DOC {i}: {doc[:500]}" for i, doc in enumerate(retrieved_docs)])
+        doc_text = "\n".join([
+            f"DOC {i}: {doc[:MAX_DOC_CHARS]}" for i, doc in enumerate(retrieved_docs)
+        ])
 
         prompt = f"""You are evaluating a RAG (Retrieval-Augmented Generation) system.
 
@@ -60,19 +67,27 @@ DOC 2: NOT_RELEVANT
 
 Also provide a brief explanation of your reasoning:"""
 
-        # Step 2: Call the LLM
-        response = self.llm.invoke(prompt)
+        response = await self.llm.ainvoke(prompt)
         response_text = response.content
 
-        # Step 3: Parse the response
-        usage_map = self._parse_usage(response_text)
+        usage_map = self._parse_usage(response_text, len(retrieved_docs))
+        parse_error = len(usage_map) == 0
 
-        # Step 4: Calculate score
+        if parse_error:
+            response = await self.llm.ainvoke(
+                prompt + "\n\nIMPORTANT: You must respond with DOC N: STATUS lines for every document."
+            )
+            response_text = response.content
+            usage_map = self._parse_usage(response_text, len(retrieved_docs))
+            parse_error = len(usage_map) == 0
+
         used_count = sum(1 for v in usage_map.values() if v == "USED")
         total_relevant = sum(1 for v in usage_map.values() if v != "NOT_RELEVANT")
 
-        if total_relevant == 0:
-            alignment_score = 0.0  # No relevant docs available
+        if parse_error:
+            alignment_score = None
+        elif total_relevant == 0:
+            alignment_score = 1.0
         else:
             alignment_score = used_count / total_relevant
 
@@ -81,21 +96,25 @@ Also provide a brief explanation of your reasoning:"""
             "usage_map": usage_map,
             "used_count": used_count,
             "total_relevant": total_relevant,
-            "explanation": response_text
+            "explanation": response_text,
+            "parse_error": parse_error,
         }
 
-    def _parse_usage(self, response_text: str) -> Dict[str, str]:
-        """Parse LLM response to extract usage for each document."""
+    def _parse_usage(self, response_text: str, expected_docs: int) -> Dict[str, str]:
         usage_map = {}
         lines = response_text.strip().split('\n')
 
         for line in lines:
-            # Match patterns like "DOC 0: USED" or "DOC 1: UNUSED"
             match = re.match(r'DOC\s+(\d+):\s+(\w+)', line.strip())
             if match:
                 doc_idx = f"doc_{match.group(1)}"
                 status = match.group(2).upper()
                 if status in ["USED", "UNUSED", "NOT_RELEVANT"]:
                     usage_map[doc_idx] = status
+
+        for i in range(expected_docs):
+            key = f"doc_{i}"
+            if key not in usage_map:
+                usage_map[key] = "UNUSED"
 
         return usage_map
