@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
+import Papa from 'papaparse';
 import './Dashboard.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -367,6 +368,8 @@ export default function Dashboard() {
   const [apiStatus, setApiStatus] = useState('checking');
   const [uploading, setUploading] = useState(false);
   const [uploadedDocs, setUploadedDocs] = useState(null);
+  const [batchResults, setBatchResults] = useState(null);
+  const [batchLoading, setBatchLoading] = useState(false);
 
   // Check API health on mount
   useEffect(() => {
@@ -468,6 +471,72 @@ export default function Dashboard() {
     }
   };
 
+  const handleBatchUpload = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.csv')) {
+      setError({ title: 'Invalid File', msg: 'Please select a CSV file (.csv).' });
+      return;
+    }
+
+    setBatchLoading(true);
+    setBatchResults(null);
+    setError(null);
+
+    try {
+      // Parse CSV
+      const text = await file.text();
+      const result = Papa.parse(text, { header: true, skipEmptyLines: true });
+
+      // Filter out non-fatal warnings like "Unable to auto-detect delimiting character"
+      const fatalErrors = result.errors.filter(e => e.code !== 'UndetectableDelimiter');
+
+      if (fatalErrors.length > 0) {
+        setError({ title: 'CSV Error', msg: `Parsing error: ${fatalErrors[0].message}` });
+        setBatchLoading(false);
+        return;
+      }
+
+      const rows = result.data;
+      if (rows.length === 0) {
+        setError({ title: 'CSV Error', msg: 'CSV file is empty' });
+        setBatchLoading(false);
+        return;
+      }
+
+      // Validate columns
+      const required = ['query', 'documents', 'answer'];
+      const headers = Object.keys(rows[0]);
+      const missing = required.filter(r => !headers.includes(r));
+      if (missing.length > 0) {
+        setError({ title: 'CSV Error', msg: `Missing columns: ${missing.join(', ')}. Required: query, documents, answer` });
+        setBatchLoading(false);
+        return;
+      }
+
+      // Build evaluation requests
+      const evaluations = rows.map(row => ({
+        query: row.query.trim(),
+        retrieved_docs: row.documents.split('|').map(d => d.trim()).filter(d => d),
+        answer: row.answer.trim()
+      }));
+
+      // Send to backend
+      const res = await axios.post(`${API_URL}/api/evaluate/batch`, {
+        evaluations: evaluations
+      });
+
+      setBatchResults(res.data);
+
+    } catch (err) {
+      console.error('Batch evaluation failed:', err);
+      setError({ title: 'Batch Failed', msg: 'Failed to process batch. Please check your CSV format or backend connection.' });
+    } finally {
+      setBatchLoading(false);
+    }
+  };
+
   const addDoc = () => setDocs(prev => [...prev, '']);
   const removeDoc = (i) => setDocs(prev => prev.filter((_, idx) => idx !== i));
   const updateDoc = (i, val) => setDocs(prev => { const n = [...prev]; n[i] = val; return n; });
@@ -513,6 +582,97 @@ export default function Dashboard() {
               />
             </div>
 
+
+            {/* === BATCH CSV SECTION === */}
+            <div style={{
+              marginBottom: 'var(--s-4)',
+              padding: 'var(--s-3)',
+              background: 'var(--bg-elevated)',
+              borderRadius: 'var(--r-md)',
+              border: '1px dashed var(--border-strong)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-3)', flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text-primary)' }}>📊 Batch CSV</span>
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleBatchUpload}
+                  style={{ display: 'none' }}
+                  id="csv-upload"
+                  disabled={batchLoading || loading}
+                />
+                <label
+                  htmlFor="csv-upload"
+                  className={`btn-upload-pdf ${batchLoading || loading ? 'disabled' : ''}`}
+                  style={{ margin: 0 }}
+                  aria-disabled={batchLoading || loading}
+                >
+                  {batchLoading ? (
+                    <><div className="spinner" style={{ borderTopColor: 'currentColor', width: 12, height: 12 }} /> Processing…</>
+                  ) : (
+                    <>📁 Upload CSV</>
+                  )}
+                </label>
+                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                  Format: query, documents (use | for multiple), answer
+                </span>
+              </div>
+
+              {/* Batch Results */}
+              {batchResults && (
+                <div style={{ marginTop: 'var(--s-3)' }}>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                    gap: 'var(--s-2)',
+                    fontSize: '13px',
+                    color: 'var(--text-secondary)'
+                  }}>
+                    <div><strong style={{color: 'var(--text-primary)'}}>Total:</strong> {batchResults.total}</div>
+                    <div><strong style={{color: 'var(--text-primary)'}}>Passed:</strong> {batchResults.passed} ({batchResults.passed_percentage.toFixed(0)}%)</div>
+                    <div><strong style={{color: 'var(--text-primary)'}}>Avg Overall:</strong> {(batchResults.average_overall * 100).toFixed(0)}%</div>
+                    <div><strong style={{color: 'var(--text-primary)'}}>Avg Alignment:</strong> {(batchResults.average_alignment * 100).toFixed(0)}%</div>
+                    <div><strong style={{color: 'var(--text-primary)'}}>Avg Citation:</strong> {(batchResults.average_citation * 100).toFixed(0)}%</div>
+                    <div><strong style={{color: 'var(--text-primary)'}}>Avg Consistency:</strong> {(batchResults.average_contradiction * 100).toFixed(0)}%</div>
+                  </div>
+                  {Object.keys(batchResults.issues_summary).length > 0 && (
+                    <div style={{ marginTop: 'var(--s-2)', fontSize: '12px', color: 'var(--score-low)', background: 'var(--score-low-bg)', padding: 'var(--s-2)', borderRadius: 'var(--r-sm)' }}>
+                      <strong>Common issues:</strong>
+                      {Object.entries(batchResults.issues_summary).map(([issue, count]) => (
+                        <span key={issue} style={{ marginLeft: '12px' }}>• {issue} ({count}x)</span>
+                      ))}
+                    </div>
+                  )}
+                  {/* Individual Results Table */}
+                  {batchResults.results && (
+                    <div style={{ marginTop: 'var(--s-3)', overflowX: 'auto' }}>
+                      <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', color: 'var(--text-secondary)' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--border-strong)' }}>
+                            <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--text-muted)' }}>Query</th>
+                            <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-muted)' }}>Overall</th>
+                            <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-muted)' }}>Pass</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {batchResults.results.map((r, i) => (
+                            <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                              <td style={{ padding: '6px 8px' }}>{r.query?.slice(0, 40)}...</td>
+                              <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                                {r.error ? '❌' : `${(r.overall_score * 100).toFixed(0)}%`}
+                              </td>
+                              <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                                {r.error ? 'Error' : r.passed ? '✅' : '❌'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Retrieved Documents */}
             <div>

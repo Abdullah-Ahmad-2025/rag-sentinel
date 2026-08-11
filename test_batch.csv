@@ -1,0 +1,4 @@
+query,documents,answer
+What is the capital of France?,"Paris is the capital of France|France is in Europe",The capital is Paris
+What is the capital of Germany?,"Berlin is the capital of Germany|Germany is in Europe",The capital is Berlin
+What is the population of France?,"France has 67 million people",67 million

@@ -57,6 +57,22 @@ class EvaluationResponse(BaseModel):
     details: dict
 
 
+class BatchEvaluationRequest(BaseModel):
+    evaluations: List[EvaluationRequest]
+
+
+class BatchEvaluationResponse(BaseModel):
+    total: int
+    passed: int
+    passed_percentage: float
+    average_overall: float
+    average_alignment: float
+    average_citation: float
+    average_contradiction: float
+    results: List[dict]
+    issues_summary: dict
+
+
 @router.post("/rag", response_model=EvaluationResponse)
 async def evaluate_rag(req: EvaluationRequest, db: Session = Depends(get_db)):
     if not os.getenv("GROQ_API_KEY"):
@@ -162,3 +178,117 @@ async def get_monitoring_metrics(
 
     monitor = RAGMonitor(db)
     return monitor.get_metrics(hours)
+
+
+@router.post("/batch", response_model=BatchEvaluationResponse)
+async def batch_evaluate(req: BatchEvaluationRequest, db: Session = Depends(get_db)):
+    """
+    Run multiple evaluations and return aggregated statistics.
+    """
+    all_results = []
+    passed_count = 0
+    total_scores = {"overall": 0, "alignment": 0, "citation": 0, "contradiction": 0}
+    issues_counter = {}
+
+    for item in req.evaluations:
+        try:
+            # Run evaluators
+            alignment_eval = get_alignment_evaluator()
+            alignment_result = await alignment_eval.evaluate(
+                item.query, item.retrieved_docs, item.answer
+            )
+
+            citation_eval = get_citation_evaluator()
+            citation_result = citation_eval.evaluate(
+                item.answer, item.retrieved_docs
+            )
+
+            contradiction_eval = get_contradiction_evaluator()
+            contradiction_result = await contradiction_eval.evaluate(
+                item.answer, item.retrieved_docs
+            )
+
+            alignment_score = alignment_result.get('alignment_score')
+            if alignment_score is None:
+                alignment_score = 0.0
+            
+            citation_score = citation_result.get('citation_accuracy', 0.0)
+            contradiction_score = contradiction_result.get('contradiction_score', 0.0)
+
+            overall = (
+                alignment_score * 0.30 +
+                citation_score * 0.35 +
+                contradiction_score * 0.35
+            )
+
+            # Track issues
+            issues = []
+            if alignment_score < 0.6:
+                issues.append("Answer doesn't use most retrieved documents")
+            if citation_score < 0.8:
+                issues.append("Citations may be inaccurate or hallucinated")
+            if contradiction_score < 0.5:
+                issues.append("Answer contradicts its sources")
+
+            # Count issues
+            for issue in issues:
+                issues_counter[issue] = issues_counter.get(issue, 0) + 1
+
+            # Track pass/fail (overall >= 0.7 = pass)
+            if overall >= 0.7:
+                passed_count += 1
+
+            total_scores["overall"] += overall
+            total_scores["alignment"] += alignment_score
+            total_scores["citation"] += citation_score
+            total_scores["contradiction"] += contradiction_score
+
+            # Store in database
+            monitor = RAGMonitor(db)
+            monitor.log_evaluation({
+                "overall_score": overall,
+                "alignment_score": alignment_score,
+                "citation_accuracy": citation_score,
+                "contradiction_score": contradiction_score,
+                "query": item.query,
+                "answer": item.answer
+            })
+
+            all_results.append({
+                "query": item.query,
+                "overall_score": overall,
+                "alignment_score": alignment_score,
+                "citation_accuracy": citation_score,
+                "contradiction_score": contradiction_score,
+                "passed": overall >= 0.7,
+                "issues": issues
+            })
+
+        except Exception as e:
+            all_results.append({
+                "query": item.query,
+                "error": str(e)
+            })
+
+    n = len(req.evaluations)
+    if n > 0:
+        avg_overall = total_scores["overall"] / n
+        avg_alignment = total_scores["alignment"] / n
+        avg_citation = total_scores["citation"] / n
+        avg_contradiction = total_scores["contradiction"] / n
+        passed_pct = (passed_count / n) * 100
+    else:
+        avg_overall = avg_alignment = avg_citation = avg_contradiction = 0.0
+        passed_pct = 0.0
+
+    return BatchEvaluationResponse(
+        total=n,
+        passed=passed_count,
+        passed_percentage=passed_pct,
+        average_overall=avg_overall,
+        average_alignment=avg_alignment,
+        average_citation=avg_citation,
+        average_contradiction=avg_contradiction,
+        results=all_results,
+        issues_summary=issues_counter
+    )
