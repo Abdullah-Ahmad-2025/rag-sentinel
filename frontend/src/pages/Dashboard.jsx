@@ -1,9 +1,42 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useId } from 'react';
 import axios from 'axios';
 import Papa from 'papaparse';
 import './Dashboard.css';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+const EXAMPLE_DATA = {
+  query: 'What is the capital of France?',
+  docs: [
+    'Paris is the capital and largest city of France.',
+    'France is a country in Western Europe.',
+  ],
+  answer: 'The capital of France is Paris.',
+};
+
+const CSV_TEMPLATE_ROWS = [
+  {
+    query: 'What is the capital of France?',
+    documents: 'Paris is the capital of France.|France is a country in Europe.',
+    answer: 'The capital of France is Paris.',
+  },
+  {
+    query: 'Who wrote Romeo and Juliet?',
+    documents: 'Romeo and Juliet is a tragedy written by William Shakespeare.|Shakespeare was an English playwright.',
+    answer: 'Romeo and Juliet was written by William Shakespeare.',
+  },
+];
+
+function downloadCsvTemplate() {
+  const csv = Papa.unparse(CSV_TEMPLATE_ROWS, { columns: ['query', 'documents', 'answer'] });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'rag-sentinel-batch-template.csv';
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 /* ─── Helpers ──────────────────────────────────────────────────── */
 function getScoreClass(score) {
@@ -34,36 +67,68 @@ function getVerdictLabel(score) {
 }
 
 /* ─── Animated Score Ring ──────────────────────────────────────── */
+const SCORE_GRADIENTS = {
+  high: [['0%', '#86efac'], ['100%', '#22c55e']],
+  mid:  [['0%', '#fde047'], ['100%', '#eab308']],
+  low:  [['0%', '#fca5a5'], ['100%', '#ef4444']],
+  na:   [['0%', '#94a3b8'], ['100%', '#64748b']],
+};
+
 function ScoreRing({ score }) {
+  const uid = useId().replace(/:/g, '');
+  const gradId = `score-grad-${uid}`;
+  const glowId = `score-glow-${uid}`;
   const r = 30;
   const circ = 2 * Math.PI * r;
   const pct = score !== null && score !== undefined ? Math.max(0, Math.min(1, score)) : 0;
   const offset = circ * (1 - pct);
   const cls = getScoreClass(score);
-  const strokeColor = cls === 'high' ? 'var(--score-high)' : cls === 'mid' ? 'var(--score-mid)' : cls === 'low' ? 'var(--score-low)' : 'var(--text-disabled)';
+  const gradKey = cls === 'na' ? 'na' : cls;
+  const glowColor = cls === 'high' ? 'rgba(74,222,128,0.6)'
+    : cls === 'mid' ? 'rgba(250,204,21,0.6)'
+    : cls === 'low' ? 'rgba(248,113,113,0.6)'
+    : 'rgba(100,116,139,0.4)';
 
   return (
-    <svg className="overall-score-ring" viewBox="0 0 72 72">
+    <svg className={`overall-score-ring score-ring-${cls}`} viewBox="0 0 72 72">
+      <defs>
+        <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
+          {SCORE_GRADIENTS[gradKey].map(([offset, color]) => (
+            <stop key={offset} offset={offset} stopColor={color} />
+          ))}
+        </linearGradient>
+        <filter id={glowId} x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="2.5" result="blur" />
+          <feFlood floodColor={glowColor} floodOpacity="0.8" result="color" />
+          <feComposite in="color" in2="blur" operator="in" result="glow" />
+          <feMerge>
+            <feMergeNode in="glow" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
       <circle className="overall-score-track" cx="36" cy="36" r={r} />
       <circle
         className="overall-score-fill"
         cx="36" cy="36" r={r}
-        stroke={strokeColor}
+        stroke={`url(#${gradId})`}
+        filter={`url(#${glowId})`}
         strokeDasharray={`${circ}`}
         strokeDashoffset={offset}
-        style={{ transition: 'stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1), stroke 0.3s ease' }}
+        style={{ transition: 'stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)' }}
       />
     </svg>
   );
 }
 
 /* ─── Score Card ───────────────────────────────────────────────── */
-function ScoreCard({ title, score, delay = 0 }) {
+function ScoreCard({ title, score, icon, delay = 0 }) {
   const cls = getScoreClass(score);
   const isNA = score === null || score === undefined;
 
   return (
     <div className={`score-card ${isNA ? '' : cls}`} style={{ animationDelay: `${delay}ms` }}>
+      <div className="score-card-icon" aria-hidden="true">{icon}</div>
       <div className="score-card-label">{title}</div>
       {isNA ? (
         <div className="score-card-na">N/A</div>
@@ -200,8 +265,12 @@ function TrendChart({ evaluations }) {
       >
         <defs>
           <linearGradient id="chart-gradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.15" />
-            <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+            <stop offset="0%" stopColor="#a855f7" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="#06b6d4" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="chart-line-gradient" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#a855f7" />
+            <stop offset="100%" stopColor="#06b6d4" />
           </linearGradient>
         </defs>
 
@@ -337,6 +406,16 @@ function DetailPanel({ title, icon, children, defaultOpen = false }) {
 function ResultsSkeleton() {
   return (
     <div className="skeleton-results">
+      <div className="loading-banner">
+        <div className="spinner spinner-lg" />
+        <div>
+          <div className="loading-banner-title">Evaluating your RAG pipeline…</div>
+          <div className="loading-banner-sub">Checking alignment, citations, and consistency</div>
+        </div>
+      </div>
+      <div className="loading-progress" aria-hidden="true">
+        <div className="loading-progress-bar" />
+      </div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 8 }}>
         <div className="sk skeleton" style={{ width: 72, height: 72, borderRadius: '50%' }} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -344,12 +423,42 @@ function ResultsSkeleton() {
           <div className="sk skeleton" style={{ width: '60%', height: 32 }} />
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 1 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
         {[0, 1, 2].map(i => (
-          <div key={i} className="sk skeleton" style={{ height: 80 }} />
+          <div key={i} className="sk skeleton" style={{ height: 100 }} />
         ))}
       </div>
       <div className="sk skeleton" style={{ height: 60 }} />
+    </div>
+  );
+}
+
+/* ─── Results Empty Preview ────────────────────────────────────── */
+function ResultsEmptyPreview() {
+  const previewScores = [
+    { icon: '🎯', label: 'Alignment', value: '85%', cls: 'high' },
+    { icon: '🔗', label: 'Citations', value: '92%', cls: 'high' },
+    { icon: '⚡', label: 'Consistency', value: '78%', cls: 'mid' },
+  ];
+
+  return (
+    <div className="results-empty">
+      <div className="results-empty-icon">🎯</div>
+      <div className="results-empty-title">No evaluations yet</div>
+      <div className="results-empty-text">
+        Fill in the input panel and click <strong>Run Evaluation</strong> to see your scores here.
+        Or use <strong>Load Example</strong> to try it instantly.
+      </div>
+      <div className="results-empty-preview" aria-hidden="true">
+        {previewScores.map(({ icon, label, value, cls }) => (
+          <div key={label} className={`results-preview-card ${cls}`}>
+            <span className="results-preview-icon">{icon}</span>
+            <span className="results-preview-label">{label}</span>
+            <span className="results-preview-value">{value}</span>
+          </div>
+        ))}
+      </div>
+      <div className="results-empty-hint">Preview — your actual scores will appear after evaluation</div>
     </div>
   );
 }
@@ -541,11 +650,26 @@ export default function Dashboard() {
   const removeDoc = (i) => setDocs(prev => prev.filter((_, idx) => idx !== i));
   const updateDoc = (i, val) => setDocs(prev => { const n = [...prev]; n[i] = val; return n; });
 
+  const loadExample = () => {
+    setQuery(EXAMPLE_DATA.query);
+    setDocs(EXAMPLE_DATA.docs);
+    setAnswer(EXAMPLE_DATA.answer);
+    setUploadedDocs(null);
+    setResults(null);
+    setError(null);
+    setBatchResults(null);
+  };
+
   const { label: verdictLabel, cls: verdictCls } = getVerdictLabel(results?.overall_score);
   const hasData = metrics && !metrics.no_data;
 
   return (
     <div className="app">
+      <div className="aurora-bg">
+        <div className="aurora-blob blob-1"></div>
+        <div className="aurora-blob blob-2"></div>
+        <div className="aurora-blob blob-3"></div>
+      </div>
       {/* ── Header ── */}
       <header className="header">
         <div className="header-logo">
@@ -584,15 +708,15 @@ export default function Dashboard() {
 
 
             {/* === BATCH CSV SECTION === */}
-            <div style={{
-              marginBottom: 'var(--s-4)',
-              padding: 'var(--s-3)',
-              background: 'var(--bg-elevated)',
-              borderRadius: 'var(--r-md)',
-              border: '1px dashed var(--border-strong)'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s-3)', flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: '600', fontSize: '14px', color: 'var(--text-primary)' }}>📊 Batch CSV</span>
+            <div className="batch-section">
+              <div className="batch-header">
+                <span className="batch-title">📊 Batch CSV Evaluation</span>
+                <span className="batch-badge">Bulk testing</span>
+              </div>
+              <p className="batch-desc">
+                Upload a CSV to evaluate multiple query/document/answer sets at once.
+              </p>
+              <div className="batch-actions">
                 <input
                   type="file"
                   accept=".csv"
@@ -604,64 +728,67 @@ export default function Dashboard() {
                 <label
                   htmlFor="csv-upload"
                   className={`btn-upload-pdf ${batchLoading || loading ? 'disabled' : ''}`}
-                  style={{ margin: 0 }}
                   aria-disabled={batchLoading || loading}
                 >
                   {batchLoading ? (
-                    <><div className="spinner" style={{ borderTopColor: 'currentColor', width: 12, height: 12 }} /> Processing…</>
+                    <><div className="spinner spinner-sm" /> Processing…</>
                   ) : (
                     <>📁 Upload CSV</>
                   )}
                 </label>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                  Format: query, documents (use | for multiple), answer
-                </span>
+                <button
+                  type="button"
+                  className="btn-download-template"
+                  onClick={downloadCsvTemplate}
+                >
+                  ⬇ Download Template
+                </button>
+              </div>
+              <div className="batch-format-hint">
+                <span className="batch-format-label">Required columns:</span>
+                <code>query</code>
+                <code>documents</code>
+                <code>answer</code>
+                <span className="batch-format-note">— separate multiple docs with <code>|</code></span>
               </div>
 
               {/* Batch Results */}
               {batchResults && (
-                <div style={{ marginTop: 'var(--s-3)' }}>
-                  <div style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
-                    gap: 'var(--s-2)',
-                    fontSize: '13px',
-                    color: 'var(--text-secondary)'
-                  }}>
-                    <div><strong style={{color: 'var(--text-primary)'}}>Total:</strong> {batchResults.total}</div>
-                    <div><strong style={{color: 'var(--text-primary)'}}>Passed:</strong> {batchResults.passed} ({batchResults.passed_percentage.toFixed(0)}%)</div>
-                    <div><strong style={{color: 'var(--text-primary)'}}>Avg Overall:</strong> {(batchResults.average_overall * 100).toFixed(0)}%</div>
-                    <div><strong style={{color: 'var(--text-primary)'}}>Avg Alignment:</strong> {(batchResults.average_alignment * 100).toFixed(0)}%</div>
-                    <div><strong style={{color: 'var(--text-primary)'}}>Avg Citation:</strong> {(batchResults.average_citation * 100).toFixed(0)}%</div>
-                    <div><strong style={{color: 'var(--text-primary)'}}>Avg Consistency:</strong> {(batchResults.average_contradiction * 100).toFixed(0)}%</div>
+                <div className="batch-results">
+                  <div className="batch-results-grid">
+                    <div><strong>Total:</strong> {batchResults.total}</div>
+                    <div><strong>Passed:</strong> {batchResults.passed} ({batchResults.passed_percentage.toFixed(0)}%)</div>
+                    <div><strong>Avg Overall:</strong> {(batchResults.average_overall * 100).toFixed(0)}%</div>
+                    <div><strong>Avg Alignment:</strong> {(batchResults.average_alignment * 100).toFixed(0)}%</div>
+                    <div><strong>Avg Citation:</strong> {(batchResults.average_citation * 100).toFixed(0)}%</div>
+                    <div><strong>Avg Consistency:</strong> {(batchResults.average_contradiction * 100).toFixed(0)}%</div>
                   </div>
                   {Object.keys(batchResults.issues_summary).length > 0 && (
-                    <div style={{ marginTop: 'var(--s-2)', fontSize: '12px', color: 'var(--score-low)', background: 'var(--score-low-bg)', padding: 'var(--s-2)', borderRadius: 'var(--r-sm)' }}>
+                    <div className="batch-issues-summary">
                       <strong>Common issues:</strong>
                       {Object.entries(batchResults.issues_summary).map(([issue, count]) => (
-                        <span key={issue} style={{ marginLeft: '12px' }}>• {issue} ({count}x)</span>
+                        <span key={issue} className="batch-issue-item">• {issue} ({count}x)</span>
                       ))}
                     </div>
                   )}
-                  {/* Individual Results Table */}
                   {batchResults.results && (
-                    <div style={{ marginTop: 'var(--s-3)', overflowX: 'auto' }}>
-                      <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse', color: 'var(--text-secondary)' }}>
+                    <div className="batch-results-table-wrap">
+                      <table className="batch-results-table">
                         <thead>
-                          <tr style={{ borderBottom: '1px solid var(--border-strong)' }}>
-                            <th style={{ padding: '6px 8px', textAlign: 'left', color: 'var(--text-muted)' }}>Query</th>
-                            <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-muted)' }}>Overall</th>
-                            <th style={{ padding: '6px 8px', textAlign: 'center', color: 'var(--text-muted)' }}>Pass</th>
+                          <tr>
+                            <th>Query</th>
+                            <th>Overall</th>
+                            <th>Pass</th>
                           </tr>
                         </thead>
                         <tbody>
                           {batchResults.results.map((r, i) => (
-                            <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                              <td style={{ padding: '6px 8px' }}>{r.query?.slice(0, 40)}...</td>
-                              <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                            <tr key={i}>
+                              <td>{r.query?.slice(0, 40)}{(r.query?.length || 0) > 40 ? '…' : ''}</td>
+                              <td className="batch-results-center">
                                 {r.error ? '❌' : `${(r.overall_score * 100).toFixed(0)}%`}
                               </td>
-                              <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                              <td className="batch-results-center">
                                 {r.error ? 'Error' : r.passed ? '✅' : '❌'}
                               </td>
                             </tr>
@@ -678,7 +805,7 @@ export default function Dashboard() {
             <div>
               <label className="field-label">Retrieved Documents</label>
 
-              {/* PDF Upload */}
+              {/* PDF Upload + Load Example */}
               <div className="pdf-upload-row">
                 <input
                   ref={pdfInputRef}
@@ -695,11 +822,19 @@ export default function Dashboard() {
                   aria-disabled={uploading || loading}
                 >
                   {uploading ? (
-                    <><div className="spinner" style={{ borderTopColor: 'currentColor', width: 12, height: 12 }} /> Processing…</>
+                    <><div className="spinner spinner-sm" /> Processing…</>
                   ) : (
                     <>📄 Upload PDF</>
                   )}
                 </label>
+                <button
+                  type="button"
+                  className="btn-load-example"
+                  onClick={loadExample}
+                  disabled={loading}
+                >
+                  💡 Load Example
+                </button>
                 {uploadedDocs && (
                   <span className="pdf-upload-status">
                     ✓ {uploadedDocs.count} page{uploadedDocs.count !== 1 ? 's' : ''} from <em>{uploadedDocs.filename}</em>
@@ -741,7 +876,7 @@ export default function Dashboard() {
               <label className="field-label">Generated Answer</label>
               <textarea
                 className="textarea answer-textarea"
-                placeholder="Paste the LLM's generated answer here…"
+                placeholder='Example: "The capital of France is Paris."'
                 value={answer}
                 onChange={e => setAnswer(e.target.value)}
               />
@@ -762,13 +897,14 @@ export default function Dashboard() {
             {/* Submit */}
             <button
               id="btn-evaluate"
-              className="btn-evaluate"
+              className={`btn-evaluate ${loading ? 'is-loading' : ''}`}
               onClick={handleEvaluate}
               disabled={loading}
+              aria-busy={loading}
             >
               {loading ? (
                 <>
-                  <div className="spinner" />
+                  <div className="spinner spinner-lg" />
                   Evaluating…
                 </>
               ) : (
@@ -820,9 +956,9 @@ export default function Dashboard() {
               <div className="card-body" style={{ paddingTop: '16px' }}>
                 {/* Score Grid */}
                 <div className="score-grid">
-                  <ScoreCard title="Alignment" score={results.alignment_score} delay={0} />
-                  <ScoreCard title="Citations" score={results.citation_accuracy} delay={80} />
-                  <ScoreCard title="Consistency" score={results.contradiction_score} delay={160} />
+                  <ScoreCard title="Alignment" icon="🎯" score={results.alignment_score} delay={0} />
+                  <ScoreCard title="Citations" icon="🔗" score={results.citation_accuracy} delay={80} />
+                  <ScoreCard title="Consistency" icon="⚡" score={results.contradiction_score} delay={160} />
                 </div>
 
                 {/* Issues */}
@@ -893,12 +1029,7 @@ export default function Dashboard() {
               </div>
             </>
           ) : (
-            <div className="results-empty">
-              <div className="results-empty-icon">🎯</div>
-              <div className="results-empty-text">
-                Fill in the input panel and run an evaluation to see results here.
-              </div>
-            </div>
+            <ResultsEmptyPreview />
           )}
         </div>
 
@@ -948,7 +1079,11 @@ export default function Dashboard() {
                   <div className={`metric-tile-value ${metrics.alert_count > 0 ? 'alert-active' : ''}`}>
                     {metrics.alert_count > 0 ? `⚠ ${metrics.alert_count}` : '✓ None'}
                   </div>
-                  <div className="metric-tile-sub">quality drops</div>
+                  <div className="metric-tile-sub">
+                    {metrics.alert_count > 0
+                      ? 'quality drops detected'
+                      : 'Triggers when score drops below 65%. Settings coming soon.'}
+                  </div>
                 </div>
               </div>
 

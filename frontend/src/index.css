@@ -1,43 +1,52 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-/* ─── Design Tokens ──────────────────────────────────────────── */
+/* ─── Aurora Glass Design Tokens ─────────────────────────────── */
 :root {
-  /* Surfaces — Ink Slate */
-  --bg-base:       #010102;
-  --bg-surface:    #0f1011;
-  --bg-elevated:   #141516;
-  --bg-overlay:    #18191a;
-  --bg-hover:      #1e2022;
+  /* Surfaces — Holographic Space Black & Frosted Glass */
+  --bg-base:       #030307;
+  --bg-surface:    rgba(10, 10, 20, 0.45);
+  --bg-elevated:   rgba(20, 20, 40, 0.55);
+  --bg-overlay:    rgba(30, 30, 60, 0.7);
+  --bg-hover:      rgba(40, 40, 80, 0.35);
 
-  /* Borders */
-  --border:        rgba(255, 255, 255, 0.06);
-  --border-strong: rgba(255, 255, 255, 0.10);
-  --border-focus:  rgba(245, 158, 11, 0.50);
+  /* Glassmorphism & Neon Borders */
+  --border:        rgba(255, 255, 255, 0.05);
+  --border-subtle: rgba(255, 255, 255, 0.04);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --border-glow:   rgba(0, 245, 255, 0.15);
+  --border-focus:  #bc39fa;
 
-  /* Text */
-  --text-primary:   #f7f8f8;
-  --text-secondary: #d0d6e0;
-  --text-muted:     #8a8f98;
-  --text-disabled:  #62666d;
+  /* Text — Ultra High Contrast & Silver Secondary */
+  --text-primary:   #ffffff;
+  --text-secondary: #cbd5e1;
+  --text-muted:     #94a3b8;
+  --text-disabled:  #64748b;
 
-  /* Accent — Amber */
-  --accent:         #f59e0b;
-  --accent-hover:   #fbbf24;
-  --accent-dim:     rgba(245, 158, 11, 0.12);
-  --accent-bg:      #1c1306;
+  /* Neon Glow Accents */
+  --accent:         #a855f7; /* Neon Violet */
+  --accent-hover:   #c084fc;
+  --accent-cyan:    #06b6d4; /* Vivid Cyan */
+  --accent-pink:    #ec4899; /* Vibrant Pink */
+  
+  /* Gradients */
+  --grad-primary:   linear-gradient(135deg, #a855f7 0%, #06b6d4 100%);
+  --grad-vibrant:   linear-gradient(135deg, #d946ef 0%, #8b5cf6 50%, #06b6d4 100%);
+  --grad-pass:      linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --grad-warn:      linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  --grad-fail:      linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
 
   /* Score Semantics */
-  --score-high:     #86efac;
-  --score-high-bg:  rgba(134, 239, 172, 0.08);
-  --score-high-border: rgba(134, 239, 172, 0.20);
+  --score-high:     #4ade80;
+  --score-high-bg:  rgba(74, 222, 128, 0.06);
+  --score-high-border: rgba(74, 222, 128, 0.25);
 
-  --score-mid:      #fde68a;
-  --score-mid-bg:   rgba(253, 230, 138, 0.08);
-  --score-mid-border: rgba(253, 230, 138, 0.20);
+  --score-mid:      #facc15;
+  --score-mid-bg:   rgba(250, 204, 21, 0.06);
+  --score-mid-border: rgba(250, 204, 21, 0.25);
 
-  --score-low:      #fca5a5;
-  --score-low-bg:   rgba(252, 165, 165, 0.08);
-  --score-low-border: rgba(252, 165, 165, 0.20);
+  --score-low:      #f87171;
+  --score-low-bg:   rgba(248, 113, 113, 0.06);
+  --score-low-border: rgba(248, 113, 113, 0.25);
 
   /* Spacing */
   --s-1: 4px;  --s-2: 8px;   --s-3: 12px;
@@ -45,22 +54,24 @@
   --s-8: 32px; --s-10: 40px; --s-12: 48px;
 
   /* Radii */
-  --r-sm: 5px;
-  --r-md: 8px;
-  --r-lg: 12px;
+  --r-sm: 6px;
+  --r-md: 12px;
+  --r-lg: 20px;
 
-  /* Shadows */
-  --shadow-card:     0 0 0 1px rgba(255,255,255,0.04), 0 1px 3px rgba(0,0,0,0.5);
-  --shadow-elevated: 0 4px 24px rgba(0,0,0,0.7);
+  /* Glass Shadows & Neon Glows */
+  --shadow-card:     0 8px 32px 0 rgba(0, 0, 0, 0.37), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-glow:     0 0 30px rgba(168, 85, 247, 0.2);
+  --shadow-elevated: 0 20px 40px rgba(0,0,0,0.6);
 
   /* Typography */
-  --font: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  --font: 'Outfit', 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-heading: 'Space Grotesk', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
 
   /* Transitions */
-  --t-fast: 100ms ease;
-  --t-base: 180ms ease;
-  --t-slow: 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  --t-fast: 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --t-base: 220ms cubic-bezier(0.4, 0, 0.2, 1);
+  --t-slow: 400ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ─── Base Reset ─────────────────────────────────────────────── */
@@ -84,50 +95,59 @@ body {
   min-height: 100vh;
   font-weight: 400;
   line-height: 1.5;
+  overflow-x: hidden;
+  position: relative;
 }
 
 /* ─── Scrollbar ──────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.10);
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 99px;
+  border: 2px solid transparent;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }
 
 /* ─── Selection ──────────────────────────────────────────────── */
 ::selection {
-  background: var(--accent-dim);
-  color: var(--accent);
+  background: rgba(168, 85, 247, 0.3);
+  color: #ffffff;
 }
 
-/* ─── Shimmer Animation ──────────────────────────────────────── */
+/* ─── Animations ────────────────────────────────────────────── */
 @keyframes shimmer {
   0%   { background-position: -300% center; }
   100% { background-position: 300% center; }
 }
 
 @keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.5; transform: scale(0.8); }
+  0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 10px var(--accent-cyan); }
+  50%       { opacity: 0.6; transform: scale(0.9); box-shadow: 0 0 4px var(--accent-cyan); }
 }
 
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(20px); filter: blur(4px); }
+  to   { opacity: 1; transform: translateY(0); filter: blur(0); }
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-@keyframes count-up {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+@keyframes float-orb-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(80px, 60px) scale(1.2); }
 }
 
-@keyframes bar-fill {
-  from { width: 0; }
+@keyframes float-orb-2 {
+  0%, 100% { transform: translate(0, 0) scale(1.1); }
+  50% { transform: translate(-100px, 80px) scale(0.9); }
+}
+
+@keyframes float-orb-3 {
+  0%, 100% { transform: translate(0, 0) scale(0.9); }
+  50% { transform: translate(60px, -90px) scale(1.15); }
 }
 
 /* ─── Utility Classes ────────────────────────────────────────── */
@@ -138,9 +158,9 @@ body {
 .skeleton {
   background: linear-gradient(
     90deg,
-    var(--bg-elevated) 25%,
-    var(--bg-hover)    50%,
-    var(--bg-elevated) 75%
+    rgba(255, 255, 255, 0.03) 25%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 75%
   );
   background-size: 300% auto;
   animation: shimmer 1.6s linear infinite;
@@ -150,4 +170,52 @@ body {
 code {
   font-family: var(--font-mono);
   font-size: 12px;
+}
+
+/* ─── Background Aurora Blobs ────────────────────────────────── */
+.aurora-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 50%, #080810, #030307);
+}
+
+.aurora-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.22;
+  mix-blend-mode: screen;
+}
+
+.blob-1 {
+  top: -10%;
+  left: 10%;
+  width: 500px;
+  height: 500px;
+  background: var(--accent);
+  animation: float-orb-1 25s infinite ease-in-out;
+}
+
+.blob-2 {
+  bottom: 10%;
+  right: -10%;
+  width: 600px;
+  height: 600px;
+  background: var(--accent-cyan);
+  animation: float-orb-2 30s infinite ease-in-out;
+}
+
+.blob-3 {
+  top: 40%;
+  left: 45%;
+  width: 400px;
+  height: 400px;
+  background: var(--accent-pink);
+  animation: float-orb-3 20s infinite ease-in-out;
 }
