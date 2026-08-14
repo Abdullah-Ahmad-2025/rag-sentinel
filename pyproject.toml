@@ -1,0 +1,16 @@
+[project]
+name = "rag-sentinel"
+version = "0.1.0"
+description = "Production RAG evaluation platform"
+
+[tool.fastapi]
+app = "backend.main:app"
+
+[dependencies]
+fastapi = "*"
+uvicorn = "*"
+sqlalchemy = "*"
+pymupdf = "*"
+python-dotenv = "*"
+requests = "*"
+pydantic = "*"
