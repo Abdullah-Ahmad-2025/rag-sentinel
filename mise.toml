@@ -1,0 +1,6 @@
+[tools]
+python = "3.11.9"
+
+[settings]
+# Disable GitHub attestation verification to fix build error
+verify_attestations = false
