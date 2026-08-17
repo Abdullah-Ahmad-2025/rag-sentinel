@@ -482,14 +482,16 @@ export default function Dashboard() {
 
   // Check API health on mount
   useEffect(() => {
-    axios.get(`${API_URL}/health`, { timeout: 3000 })
+    axios.get(`${API_URL}/health`, { timeout: 3000, withCredentials: true })
       .then(() => setApiStatus('online'))
       .catch(() => setApiStatus('offline'));
   }, []);
 
   const fetchMonitoring = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_URL}/api/evaluate/monitoring`);
+      const res = await axios.get(`${API_URL}/api/evaluate/monitoring`, {
+        withCredentials: true
+      });
       setMetrics(res.data);
     } catch (err) {
       // Silent fail — monitoring is secondary
@@ -523,6 +525,8 @@ export default function Dashboard() {
         query: query.trim(),
         retrieved_docs: filteredDocs,
         answer: answer.trim(),
+      }, {
+        withCredentials: true
       });
       setResults(res.data);
       fetchMonitoring();
@@ -562,6 +566,7 @@ export default function Dashboard() {
     try {
       const res = await axios.post(`${API_URL}/api/upload/pdf`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        withCredentials: true
       });
 
       const documents = res.data.documents;
@@ -634,6 +639,8 @@ export default function Dashboard() {
       // Send to backend
       const res = await axios.post(`${API_URL}/api/evaluate/batch`, {
         evaluations: evaluations
+      }, {
+        withCredentials: true
       });
 
       setBatchResults(res.data);
@@ -1107,6 +1114,14 @@ export default function Dashboard() {
               <span>Run your first evaluation above to start tracking quality over time.</span>
             </div>
           )}
+        </div>
+
+        {/* Disclaimer */}
+        <div className="disclaimer">
+          <span className="disclaimer-text">
+            ℹ️ This is a demonstration environment. Data is stored locally and may be reset periodically.
+            Session isolation is enabled - you can only see evaluations from your current session.
+          </span>
         </div>
       </main>
     </div>
