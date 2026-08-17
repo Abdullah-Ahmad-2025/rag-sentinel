@@ -75,7 +75,7 @@ class BatchEvaluationResponse(BaseModel):
 
 
 @router.post("/rag", response_model=EvaluationResponse)
-async def evaluate_rag(
+def evaluate_rag(
     req: EvaluationRequest,
     response: Response,
     db: Session = Depends(get_db),
@@ -104,7 +104,7 @@ async def evaluate_rag(
 
     try:
         alignment_eval = get_alignment_evaluator()
-        alignment_result = await alignment_eval.evaluate(req.query, retrieved_docs, req.answer)
+        alignment_result = alignment_eval.evaluate(req.query, retrieved_docs, req.answer)
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
@@ -116,7 +116,7 @@ async def evaluate_rag(
 
     try:
         contradiction_eval = get_contradiction_evaluator()
-        contradiction_result = await contradiction_eval.evaluate(req.answer, retrieved_docs)
+        contradiction_result = contradiction_eval.evaluate(req.answer, retrieved_docs)
     except ValueError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
@@ -228,7 +228,7 @@ async def get_history(
 
 
 @router.post("/batch", response_model=BatchEvaluationResponse)
-async def batch_evaluate(
+def batch_evaluate(
     req: BatchEvaluationRequest,
     response: Response,
     db: Session = Depends(get_db),
@@ -257,7 +257,7 @@ async def batch_evaluate(
         try:
             # Run evaluators
             alignment_eval = get_alignment_evaluator()
-            alignment_result = await alignment_eval.evaluate(
+            alignment_result = alignment_eval.evaluate(
                 item.query, item.retrieved_docs, item.answer
             )
 
@@ -267,7 +267,7 @@ async def batch_evaluate(
             )
 
             contradiction_eval = get_contradiction_evaluator()
-            contradiction_result = await contradiction_eval.evaluate(
+            contradiction_result = contradiction_eval.evaluate(
                 item.answer, item.retrieved_docs
             )
 
