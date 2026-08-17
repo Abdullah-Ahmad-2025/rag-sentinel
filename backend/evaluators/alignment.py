@@ -23,13 +23,13 @@ class RetrievalGenerationAlignmentEvaluator:
             raise ValueError("GROQ_API_KEY not found in environment variables")
 
         self.llm = ChatGroq(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-20b",
             temperature=0,
             api_key=api_key,
             timeout=30,
         )
 
-    async def evaluate(self, query: str, retrieved_docs: List[str], answer: str) -> Dict:
+    def evaluate(self, query: str, retrieved_docs: List[str], answer: str) -> Dict:
         if not retrieved_docs:
             return {
                 "alignment_score": 1.0,
@@ -67,14 +67,14 @@ DOC 2: NOT_RELEVANT
 
 Also provide a brief explanation of your reasoning:"""
 
-        response = await self.llm.ainvoke(prompt)
+        response = self.llm.invoke(prompt)
         response_text = response.content
 
         usage_map = self._parse_usage(response_text, len(retrieved_docs))
         parse_error = len(usage_map) == 0
 
         if parse_error:
-            response = await self.llm.ainvoke(
+            response = self.llm.invoke(
                 prompt + "\n\nIMPORTANT: You must respond with DOC N: STATUS lines for every document."
             )
             response_text = response.content

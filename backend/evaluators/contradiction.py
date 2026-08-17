@@ -24,13 +24,13 @@ class ContextContradictionDetector:
             raise ValueError("GROQ_API_KEY not found in environment variables")
 
         self.llm = ChatGroq(
-            model="llama-3.3-70b-versatile",
+            model="openai/gpt-oss-20b",
             temperature=0,
             api_key=api_key,
             timeout=30,
         )
 
-    async def evaluate(self, answer: str, retrieved_docs: List[str]) -> Dict:
+    def evaluate(self, answer: str, retrieved_docs: List[str]) -> Dict:
         if not retrieved_docs:
             return {
                 "contradiction_score": 1.0,
@@ -64,7 +64,7 @@ VERDICT: [YES/PARTIAL/NO]
 DETAILS: [explanation of why]
 SPECIFIC_CONTRADICTIONS: [list any specific contradictions found, or "None"]"""
 
-        response = await self.llm.ainvoke(prompt)
+        response = self.llm.invoke(prompt)
         response_text = response.content
 
         verdict, explanation, specifics = self._parse_response(response_text)
