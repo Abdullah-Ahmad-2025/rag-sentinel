@@ -22,6 +22,7 @@ class RAGMonitor:
     def log_evaluation(self, evaluation_result: dict) -> None:
         log = EvaluationLog(
             timestamp=_utcnow(),
+            session_id=evaluation_result.get('session_id'),
             overall_score=evaluation_result.get('overall_score', 0.0),
             # Store None if alignment was unavailable — avoids biasing avg_score
             alignment_score=evaluation_result.get('alignment_score'),
@@ -68,11 +69,18 @@ class RAGMonitor:
         self.db.add(alert)
         self.db.commit()
 
-    def get_metrics(self, hours: int = 24) -> dict:
+    def get_metrics(self, hours: int = 24, session_id: str = None) -> dict:
         cutoff = _utcnow() - timedelta(hours=hours)
-        logs = self.db.query(EvaluationLog).filter(
+
+        query = self.db.query(EvaluationLog).filter(
             EvaluationLog.timestamp > cutoff
-        ).order_by(EvaluationLog.timestamp.asc()).all()
+        )
+
+        # Filter by session if provided
+        if session_id:
+            query = query.filter(EvaluationLog.session_id == session_id)
+
+        logs = query.order_by(EvaluationLog.timestamp.asc()).all()
 
         alert_count = len(
             self.db.query(MonitoringAlert).filter(

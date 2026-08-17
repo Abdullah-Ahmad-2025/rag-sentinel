@@ -14,6 +14,7 @@ class EvaluationLog(Base):
     __tablename__ = "evaluation_logs"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    session_id = Column(String, index=True, nullable=True)
     timestamp = Column(DateTime, default=_utcnow)
     overall_score = Column(Float)
     alignment_score = Column(Float)

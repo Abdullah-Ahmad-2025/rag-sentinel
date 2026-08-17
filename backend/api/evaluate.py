@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Cookie, Response
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import os
 import logging
+import uuid
 
 from backend.evaluators.alignment import RetrievalGenerationAlignmentEvaluator
 from backend.evaluators.citation import CitationAccuracyEvaluator
@@ -74,11 +75,27 @@ class BatchEvaluationResponse(BaseModel):
 
 
 @router.post("/rag", response_model=EvaluationResponse)
-async def evaluate_rag(req: EvaluationRequest, db: Session = Depends(get_db)):
+async def evaluate_rag(
+    req: EvaluationRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    session_id: str = Cookie(default=None)
+):
     if not os.getenv("GROQ_API_KEY"):
         raise HTTPException(
             status_code=503,
             detail="GROQ_API_KEY is not configured. Set it in your .env file.",
+        )
+
+    # Generate session ID if none exists
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        response.set_cookie(
+            key="session_id",
+            value=session_id,
+            max_age=86400,  # 24 hours
+            httponly=True,
+            samesite="lax"
         )
 
     retrieved_docs = [d.strip() for d in req.retrieved_docs if d.strip()]
@@ -145,6 +162,7 @@ async def evaluate_rag(req: EvaluationRequest, db: Session = Depends(get_db)):
         "contradiction_score": contradiction_score,
         "query": req.query,
         "answer": req.answer,
+        "session_id": session_id
     }
 
     try:
@@ -171,20 +189,65 @@ async def evaluate_rag(req: EvaluationRequest, db: Session = Depends(get_db)):
 @router.get("/monitoring")
 async def get_monitoring_metrics(
     hours: int = 24,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    session_id: str = Cookie(default=None)
 ):
     if hours < 1 or hours > 720:
         raise HTTPException(status_code=422, detail="hours must be between 1 and 720")
 
     monitor = RAGMonitor(db)
-    return monitor.get_metrics(hours)
+    return monitor.get_metrics(hours=hours, session_id=session_id)
+
+
+@router.get("/history")
+async def get_history(
+    db: Session = Depends(get_db),
+    session_id: str = Cookie(default=None)
+):
+    from backend.models.schema import EvaluationLog
+
+    query = db.query(EvaluationLog).order_by(EvaluationLog.timestamp.desc()).limit(100)
+    if session_id:
+        query = query.filter(EvaluationLog.session_id == session_id)
+    logs = query.all()
+
+    return [
+        {
+            "id": log.id,
+            "timestamp": log.timestamp.isoformat(),
+            "overall_score": log.overall_score,
+            "alignment_score": log.alignment_score,
+            "citation_accuracy": log.citation_accuracy,
+            "contradiction_score": log.contradiction_score,
+            "query": log.query,
+            "answer": log.answer,
+            "session_id": log.session_id
+        }
+        for log in logs
+    ]
 
 
 @router.post("/batch", response_model=BatchEvaluationResponse)
-async def batch_evaluate(req: BatchEvaluationRequest, db: Session = Depends(get_db)):
+async def batch_evaluate(
+    req: BatchEvaluationRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    session_id: str = Cookie(default=None)
+):
     """
     Run multiple evaluations and return aggregated statistics.
     """
+
+    # Generate session ID if none exists
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        response.set_cookie(
+            key="session_id",
+            value=session_id,
+            max_age=86400,  # 24 hours
+            httponly=True,
+            samesite="lax"
+        )
     all_results = []
     passed_count = 0
     total_scores = {"overall": 0, "alignment": 0, "citation": 0, "contradiction": 0}
@@ -251,7 +314,8 @@ async def batch_evaluate(req: BatchEvaluationRequest, db: Session = Depends(get_
                 "citation_accuracy": citation_score,
                 "contradiction_score": contradiction_score,
                 "query": item.query,
-                "answer": item.answer
+                "answer": item.answer,
+                "session_id": session_id
             })
 
             all_results.append({
